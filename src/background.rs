@@ -55,9 +55,6 @@ impl Material2d for BackgroundMaterial {
 pub struct GridMaterial {}
 
 impl Material2d for GridMaterial {
-    fn vertex_shader() -> ShaderRef {
-        "grid.wgsl".into()
-    }
     fn fragment_shader() -> ShaderRef {
         "grid.wgsl".into()
     }
