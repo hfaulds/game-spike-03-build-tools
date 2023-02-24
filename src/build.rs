@@ -5,7 +5,6 @@ use bevy::{
     render::mesh::shape::{Circle, Quad},
     sprite::MaterialMesh2dBundle,
 };
-use std::cmp::{max, min};
 use std::f32::consts::PI;
 
 #[derive(Component)]
@@ -28,6 +27,7 @@ struct WallStart {
 struct WallCreateEvent {
     from: Vec2,
     to: Vec2,
+    dir: Vec2,
 }
 
 pub struct BuildPlugin;
@@ -87,24 +87,34 @@ fn place_wall_system(
                 if let Some(cursor_global) = get_cursor_position(windows, camera) {
                     let to = round_to_grid(cursor_global, GRID_SIZE);
 
-                    let dist = (to - from).abs();
+                    let dist = to - from;
+                    let direction = *[
+                        Vec2::new(0.0, 1.0),
+                        Vec2::new(1.0, 1.0),
+                        Vec2::new(1.0, 0.0),
+                        Vec2::new(1.0, -1.0),
+                        Vec2::new(0.0, -1.0),
+                        Vec2::new(-1.0, -1.0),
+                        Vec2::new(-1.0, 0.0),
+                        Vec2::new(-1.0, 1.0),
+                    ]
+                    .iter()
+                    .min_by(|x, y| {
+                        x.normalize()
+                            .distance(dist.normalize())
+                            .partial_cmp(&y.normalize().distance(dist.normalize()))
+                            .unwrap()
+                    })
+                    .unwrap();
 
-                    if dist.x > dist.y {
-                        for x in (min(from.x as i32, to.x as i32)..max(from.x as i32, to.x as i32))
-                            .step_by(GRID_SIZE as usize)
-                        {
-                            let a = Vec2::new(x as f32, from.y);
-                            let b = Vec2::new(x as f32 + GRID_SIZE, from.y);
-                            events.send(WallCreateEvent { from: a, to: b });
-                        }
-                    } else {
-                        for y in (min(from.y as i32, to.y as i32)..max(from.y as i32, to.y as i32))
-                            .step_by(GRID_SIZE as usize)
-                        {
-                            let a = Vec2::new(from.x, y as f32);
-                            let b = Vec2::new(from.x, y as f32 + GRID_SIZE);
-                            events.send(WallCreateEvent { from: a, to: b });
-                        }
+                    for i in 0..((dist / direction / GRID_SIZE).min_element().floor() as usize) {
+                        let a = from + (i as f32 * direction) * GRID_SIZE;
+                        let b = from + ((i + 1) as f32 * direction) * GRID_SIZE;
+                        events.send(WallCreateEvent {
+                            from: a,
+                            to: b,
+                            dir: direction,
+                        });
                     }
                     wall_start.from = None;
                 }
@@ -130,10 +140,20 @@ fn spawn_wall_system(
     for event in events.iter() {
         let to = event.to;
         let from = event.from;
+        let dir = event.dir;
+        let mut size = Vec2::new(GRID_SIZE, 2.);
 
         let mut transform = Transform::from_translation(to.extend(0.));
         if to.x == from.x {
             transform.rotate_z(PI / 2.);
+        }
+        if to.x != from.x && to.y != from.y {
+            if dir.x == dir.y {
+                transform.rotate_z(PI / 4.0);
+            } else {
+                transform.rotate_z(PI / -4.0);
+            }
+            size = Vec2::new(GRID_SIZE * std::f32::consts::SQRT_2, 2.);
         }
         if to.x > from.x {
             transform.translation += Vec3::new(-GRID_SIZE / 2., 0., 0.);
@@ -152,9 +172,7 @@ fn spawn_wall_system(
             parent.spawn((
                 ShipWall {},
                 MaterialMesh2dBundle {
-                    mesh: meshes
-                        .add(Quad::new(Vec2::new(GRID_SIZE, 2.)).into())
-                        .into(),
+                    mesh: meshes.add(Quad::new(size).into()).into(),
                     material: materials.add(ColorMaterial::from(Color::WHITE)),
                     transform: transform,
                     ..default()
