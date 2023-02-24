@@ -22,7 +22,7 @@ struct ShipEngine {}
 
 #[derive(Resource, Default)]
 struct WallStart {
-    pos: Vec2,
+    from: Option<Vec2>,
 }
 
 struct WallCreateEvent {
@@ -80,37 +80,43 @@ fn place_wall_system(
     mut wall_start: ResMut<WallStart>,
     mut events: EventWriter<WallCreateEvent>,
 ) {
-    if !buttons.pressed(MouseButton::Left) {
-        return;
-    }
+    match wall_start.from {
+        Some(from) => {
+            if buttons.pressed(MouseButton::Left) {}
+            if buttons.just_released(MouseButton::Left) {
+                if let Some(cursor_global) = get_cursor_position(windows, camera) {
+                    let to = round_to_grid(cursor_global, GRID_SIZE);
 
-    if let Some(cursor_global) = get_cursor_position(windows, camera) {
-        let to = round_to_grid(cursor_global, GRID_SIZE);
+                    let dist = (to - from).abs();
 
-        if buttons.just_pressed(MouseButton::Left) {
-            wall_start.pos = to;
+                    if dist.x > dist.y {
+                        for x in (min(from.x as i32, to.x as i32)..max(from.x as i32, to.x as i32))
+                            .step_by(GRID_SIZE as usize)
+                        {
+                            let a = Vec2::new(x as f32, from.y);
+                            let b = Vec2::new(x as f32 + GRID_SIZE, from.y);
+                            events.send(WallCreateEvent { from: a, to: b });
+                        }
+                    } else {
+                        for y in (min(from.y as i32, to.y as i32)..max(from.y as i32, to.y as i32))
+                            .step_by(GRID_SIZE as usize)
+                        {
+                            let a = Vec2::new(from.x, y as f32);
+                            let b = Vec2::new(from.x, y as f32 + GRID_SIZE);
+                            events.send(WallCreateEvent { from: a, to: b });
+                        }
+                    }
+                    wall_start.from = None;
+                }
+            }
         }
-
-        let from = wall_start.pos;
-        if from == to {
-            return;
+        None => {
+            if buttons.just_pressed(MouseButton::Left) {
+                if let Some(cursor_global) = get_cursor_position(windows, camera) {
+                    wall_start.from = Some(round_to_grid(cursor_global, GRID_SIZE));
+                }
+            }
         }
-
-        for x in (min(from.x as i32, to.x as i32)..max(from.x as i32, to.x as i32))
-            .step_by(GRID_SIZE as usize)
-        {
-            let a = Vec2::new(x as f32, from.y);
-            let b = Vec2::new(x as f32 + GRID_SIZE, from.y);
-            events.send(WallCreateEvent { from: a, to: b });
-        }
-        for y in (min(from.y as i32, to.y as i32)..max(from.y as i32, to.y as i32))
-            .step_by(GRID_SIZE as usize)
-        {
-            let a = Vec2::new(to.x, y as f32);
-            let b = Vec2::new(to.x, y as f32 + GRID_SIZE);
-            events.send(WallCreateEvent { from: a, to: b });
-        }
-        wall_start.pos = to;
     }
 }
 
